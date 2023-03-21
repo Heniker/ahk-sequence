@@ -1,33 +1,35 @@
-SetCapsLockState("AlwaysOff")
-
-CapsLock & f::{
-	CreateSequence := SequenceRegister()
-
-  CreateSequence("test", (*) => MsgBox("test"))
-  CreateSequence("hello", (*) => 0)
-  CreateSequence("world", (*) => 0)
-  CreateSequence("magic", (*) => 0)
-  CreateSequence("42", (*) => 0)
-}
+; #todo> Allow keys other than chars in sequences
+/* #todo>
+Allow dynamic suggestion additions in UI
+Correct updates require changing sorting algorithm and using ref as first argument in MakeUi function
+Also removing usage of setTimer for UI init would be a good idea
+*/
+; #todo> Add Right Left Enter key handlers for UI - `ui("right")`
+; #todo> Add mouse click handlers in UI (usuing callback (cb) within MakeUi function)
+; #todo> Replace SoundPlay windows .wav files with normal beeps (SoundBeep does not work asynchronously)
 
 SequenceRegister(wantUi := true) {
-	; #todo> Allow keys other than chars in sequences
+	static isActive := false
+
+	if (isActive) {
+		return (*) => 0
+	}
+
+	isActive := true
 
 	inputLen := 0
-	actions := Map()
-	hasSuccess := false
-
+	inputHandlers := Map()
 	currentInput := ""
-	currentItems := []
-	ui := wantUi && CanShowUi() ? MakeUi(&currentItems, &currentInput) : (*) => 0
 
-	setTimer(ui, -1)
+	ui := (*) => {}
+	SetTimer(() => ui := wantUi && CanShowUi() ? MakeUi(KeyOfMap(inputHandlers), &currentInput) : (*) => 0, -1)
 
 	return SequenceClosure
-
+	
 	SequenceClosure(seq := "", ActionCb := () => true) {
-		currentItems.Push(seq)
-		if (actions.Count = 0) {
+		static hasSuccess := false
+
+		if (inputHandlers.Count = 0) {
 			h := InputHook("B I")
 			h.KeyOpt("{All}", "N")
 			h.OnKeyDown := KeyDownHandler
@@ -35,43 +37,46 @@ SequenceRegister(wantUi := true) {
 			h.Start()
 		}
 
-		actionKey := actions.Count
-		actions.Set(actionKey, Action)
+		inputHandlers.Set(seq, OnInput)
 
 		return
 
-		Action(hook, VK, SC) {
-			if (GetKeyName(Format("vk{:x}sc{:x}", VK, SC)) = SubStr(seq, inputLen, 1) && inputLen < StrLen(seq)) {
+		OnInput(hook, VK, SC) {
+			isInputEqueal := currentInput = SubStr(seq, 1, inputLen)
+
+			if (isInputEqueal && inputLen < StrLen(seq)) {
 				return
 			}
 
-			if (GetKeyName(Format("vk{:x}sc{:x}", VK, SC)) = SubStr(seq, inputLen, 1) && inputLen = StrLen(seq)) {
+			if (isInputEqueal && inputLen = StrLen(seq)) {
 				ActionCb()
 				hasSuccess := true
-				ui("close")
-				SoundBeep 500, 500
+				
+				SoundPlay(A_WinDir . "\Media\Windows Balloon.wav")
 			}
 
-			if (actions.Count = 1) { ; All actions finished
+			if (inputHandlers.Count = 1) { ; All inputHandlers finished
+				if (!hasSuccess) {
+					; Send("{Blind}" . Format("{{}vk{:x}sc{:x}{}}", VK, SC)) ; Repeat missed key
+					SoundPlay(A_WinDir . "\Media\Windows Default.wav")
+				}
+
 				hook.Stop()
 				ui("close")
 
-				if (!hasSuccess) {
-					; Send("{Blind}" . Format("{{}vk{:x}sc{:x}{}}", VK, SC)) ; Repeat missed key
-					SoundBeep 3000, 250
-				}
-
+				isActive := false
+				hasSuccess := false
 				return
 			}
 
-			actions.delete(actionKey)
+			inputHandlers.delete(seq)
 		}
 	}
 
 	KeyDownHandler(hook, VK, SC) {
 		inputLen++
 		currentInput := currentInput . GetKeyName(Format("vk{:x}sc{:x}", VK, SC))
-		for key, value in actions.Clone() {
+		for key, value in inputHandlers.Clone() {
 			value(hook, VK, SC)
 		}
 		ui()
@@ -83,11 +88,11 @@ SequenceRegister(wantUi := true) {
 		; https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ne-shellapi-query_user_notification_state
 		dllCall("shell32.dll\SHQueryUserNotificationState", "Ptr", ptr)
 		; NumGet implicitly converts inner-pointer to int
-		return  NumGet(ptr, 0, "Int") = 5
+		return NumGet(ptr, 0, "Int") = 5
 	}
 }
 
-MakeUi(suggestionsRef, needleRef, cb := () => 0) {
+MakeUi(suggestions, needleRef, cb := () => 0) {
 	static xSize := 350
 	static ySize := 60
 	static maxSize := xSize / 8 ; Symbol to pixel ratio (kinda)
@@ -102,7 +107,6 @@ MakeUi(suggestionsRef, needleRef, cb := () => 0) {
 	statusBarItemsMap := Map()
 	hightlightedIndex := 0
 	isClosed := false
-	suggestions := %suggestionsRef%
 
 	Update()
 	return Update
@@ -118,11 +122,11 @@ MakeUi(suggestionsRef, needleRef, cb := () => 0) {
 			), ",")
 
 		if (arg = "close") {
+			isClosed := true
 			wrapper.Hide()
 			main.Hide()
 			statusBar.Hide()
 			statusBarItems.Hide()
-			isClosed := true
 			return
 		}
 
@@ -199,7 +203,7 @@ MakeUi(suggestionsRef, needleRef, cb := () => 0) {
 		statusBar.Show("NoActivate")
 		statusBar.Move(A_ScreenWidth / 2 - (xSize-15)/2, ySize - 15, (xSize-15), 20)
 		statusBar.Hide()
-		
+
 		return statusBar
 	}
 
@@ -216,14 +220,33 @@ MakeUi(suggestionsRef, needleRef, cb := () => 0) {
 
 		return textElements
 	}
+}
 
-	; ----------
-
-	static ArrToString(arr, sep := ",") {
-		str := ""
-		for (_, val in arr) {
-			str .= sep . val
-		}
-		return LTrim(str, sep)
+ArrToString(arr, sep := ",") {
+	result := ""
+	for (_, val in arr) {
+		result .= sep . val
 	}
+	return LTrim(result, sep)
+}
+
+KeyOfMap(map) {
+	result := []
+	for (key, _ in map) {
+		result.push(key)
+	}
+	return result
+}
+
+
+SetCapsLockState("AlwaysOff")
+
+CapsLock & f::{
+	MakeSequence := SequenceRegister()
+
+	MakeSequence("hello", (*) => MsgBox("hello"))
+	MakeSequence("world", (*) => 0)
+	MakeSequence("42", (*) =>  0)
+	MakeSequence("test", (*) => 0)
+	MakeSequence("testtt", (*) => 0)
 }
