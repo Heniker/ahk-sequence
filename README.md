@@ -10,7 +10,7 @@ SetCapsLockState("AlwaysOff")
 CapsLock & f::{
 	MakeSequence := SequenceRegister()
 
-	MakeSequence("hello", (*) => MsbBox("hello"))
+	MakeSequence("hello", (*) => MsgBox("hello"))
 	MakeSequence("world", (*) => 0)
 	MakeSequence("42", (*) =>  0)
 	MakeSequence("test", (*) => 0)
