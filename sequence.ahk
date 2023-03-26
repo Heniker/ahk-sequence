@@ -2,43 +2,35 @@
 /* #todo>
 Allow dynamic suggestion additions in UI
 Correct updates require changing sorting algorithm and using ref as first argument in MakeUi function
-Also removing usage of setTimer for UI init would be a good idea
+Also removing usage of setTimer for UI init would be a good idea, as rn ui won't close properly if sequence fails too fast
 */
 ; #todo> Add Right Left Enter key handlers for UI - `ui("right")`
 ; #todo> Add mouse click handlers in UI (usuing callback (cb) within MakeUi function)
 ; #todo> Replace SoundPlay windows .wav files with normal beeps (SoundBeep does not work asynchronously)
 
 SequenceRegister(wantUi := true) {
-	static isActive := false
+	isActive := false
+	hasSuccess := false
+	inputLen := 0
+	inputHandlers := Map()
+	currentInput := ""
 
 	if (isActive) {
 		return (*) => 0
 	}
 
-	isActive := true
-
-	inputLen := 0
-	inputHandlers := Map()
-	currentInput := ""
-
-	ui := (*) => {}
-	SetTimer(() => ui := wantUi && CanShowUi() ? MakeUi(KeyOfMap(inputHandlers), &currentInput) : (*) => 0, -1)
+	ui := (*) => 0
+	SetTimer(() => ui := wantUi && CanShowUi() ? (_ := MakeUi(KeyOfMap(inputHandlers), &currentInput), _(), _) : (*) => 0, -1)
 
 	return SequenceClosure
 	
 	SequenceClosure(seq := "", ActionCb := () => true) {
-		static hasSuccess := false
-
-		if (inputHandlers.Count = 0) {
-			h := InputHook("B I")
-			h.KeyOpt("{All}", "N")
-			h.OnKeyDown := KeyDownHandler
-			h.NotifyNonText := true
-			h.Start()
+		if (!isActive) {
+			InitHook()
+			isActive := true
 		}
 
 		inputHandlers.Set(seq, OnInput)
-
 		return
 
 		OnInput(hook, VK, SC) {
@@ -70,6 +62,15 @@ SequenceRegister(wantUi := true) {
 			}
 
 			inputHandlers.delete(seq)
+		}
+
+		InitHook() {
+			; MsgBox("hookinit")
+			h := InputHook("B I")
+			h.KeyOpt("{All}", "N")
+			h.OnKeyDown := KeyDownHandler
+			h.NotifyNonText := true
+			h.Start()
 		}
 	}
 
@@ -108,7 +109,6 @@ MakeUi(suggestions, needleRef, cb := () => 0) {
 	hightlightedIndex := 0
 	isClosed := false
 
-	Update()
 	return Update
 
 	Update(arg := "") {
@@ -236,17 +236,4 @@ KeyOfMap(map) {
 		result.push(key)
 	}
 	return result
-}
-
-
-SetCapsLockState("AlwaysOff")
-
-CapsLock & f::{
-	MakeSequence := SequenceRegister()
-
-	MakeSequence("hello", (*) => MsgBox("hello"))
-	MakeSequence("world", (*) => 0)
-	MakeSequence("42", (*) =>  0)
-	MakeSequence("test", (*) => 0)
-	MakeSequence("testtt", (*) => 0)
 }
