@@ -11,7 +11,6 @@ Also removing usage of setTimer for UI init would be a good idea, as rn ui won't
 SequenceRegister(wantUi := true) {
 	isActive := false
 	hasSuccess := false
-	inputLen := 0
 	inputHandlers := Map()
 	currentInput := ""
 
@@ -20,10 +19,10 @@ SequenceRegister(wantUi := true) {
 	}
 
 	ui := (*) => 0
-	SetTimer(() => ui := wantUi && CanShowUi() ? (_ := MakeUi(KeyOfMap(inputHandlers), &currentInput), _(), _) : (*) => 0, -1)
+	SetTimer(() => ui := wantUi && CanShowUi() && (_ := MakeUi(KeyOfMap(inputHandlers), &currentInput), _(), _), -1)
 
 	return SequenceClosure
-	
+
 	SequenceClosure(seq := "", ActionCb := () => true) {
 		if (!isActive) {
 			InitHook()
@@ -34,30 +33,27 @@ SequenceRegister(wantUi := true) {
 		return
 
 		OnInput(hook, VK, SC) {
-			isInputEqueal := currentInput = SubStr(seq, 1, inputLen)
+			isInputEqueal := currentInput = SubStr(seq, 1, StrLen(currentInput))
 
-			if (isInputEqueal && inputLen < StrLen(seq)) {
+			if (isInputEqueal && StrLen(currentInput) < StrLen(seq)) {
 				return
 			}
 
-			if (isInputEqueal && inputLen = StrLen(seq)) {
+			if (isInputEqueal && StrLen(currentInput) = StrLen(seq)) {
 				ActionCb()
 				hasSuccess := true
-				
+
 				SoundPlay(A_WinDir . "\Media\Windows Balloon.wav")
 			}
 
 			if (inputHandlers.Count = 1) { ; All inputHandlers finished
-				if (!hasSuccess) {
-					; Send("{Blind}" . Format("{{}vk{:x}sc{:x}{}}", VK, SC)) ; Repeat missed key
-					SoundPlay(A_WinDir . "\Media\Windows Default.wav")
-				}
-
-				hook.Stop()
-				ui("close")
+				(!hasSuccess && SoundPlay(A_WinDir . "\Media\Windows Default.wav"))
 
 				isActive := false
 				hasSuccess := false
+				hook.Stop()
+				ui("close")
+
 				return
 			}
 
@@ -65,7 +61,6 @@ SequenceRegister(wantUi := true) {
 		}
 
 		InitHook() {
-			; MsgBox("hookinit")
 			h := InputHook("B I")
 			h.KeyOpt("{All}", "N")
 			h.OnKeyDown := KeyDownHandler
@@ -75,12 +70,17 @@ SequenceRegister(wantUi := true) {
 	}
 
 	KeyDownHandler(hook, VK, SC) {
-		inputLen++
+		Critical("On") ; Ensures all operation are trully sync
+		if (!isActive) {
+			return
+		}
+
 		currentInput := currentInput . GetKeyName(Format("vk{:x}sc{:x}", VK, SC))
 		for key, value in inputHandlers.Clone() {
 			value(hook, VK, SC)
 		}
 		ui()
+		Critical("Off")
 	}
 
 	static CanShowUi() {
@@ -98,11 +98,13 @@ MakeUi(suggestions, needleRef, cb := () => 0) {
 	static ySize := 60
 	static maxSize := xSize / 8 ; Symbol to pixel ratio (kinda)
 
-	static wrapper := CreateWrapper()
-	static main := CreateMain(wrapper)
+	; This variables can be declared static, but in some (random) conditions the gui window can be
+	; destroyed (e.g. when pc goes to sleep). So better recreate them each time
+	wrapper := CreateWrapper()
+	main := CreateMain(wrapper)
 	; Spaces are required to set expected width, so that future Text edits work correctly
-	static mainOutput := main.Add("Text","r1 ys", "______________________________________________________________")
-	static statusBar := CreateStatusBar(main)
+	mainOutput := main.Add("Text","r1 ys", "______________________________________________________________")
+	statusBar := CreateStatusBar(main)
 
 	statusBarItems := CreateStatusBarItems(statusBar)
 	statusBarItemsMap := Map()
@@ -123,10 +125,11 @@ MakeUi(suggestions, needleRef, cb := () => 0) {
 
 		if (arg = "close") {
 			isClosed := true
-			wrapper.Hide()
-			main.Hide()
-			statusBar.Hide()
+
 			statusBarItems.Hide()
+			statusBar.Hide()
+			main.Hide()
+			wrapper.Hide()
 			return
 		}
 
@@ -152,6 +155,7 @@ MakeUi(suggestions, needleRef, cb := () => 0) {
 		statusBarItems := CreateStatusBarItems(statusBar)
 		statusBarItemsMap.Clear()
 		sizeCnt := 0
+
 
 		for (_, it in suggestions) {
 			if (sizeCnt > maxSize) {
