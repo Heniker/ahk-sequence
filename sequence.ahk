@@ -19,7 +19,7 @@ SequenceRegister(wantUi := true) {
 	}
 
 	ui := (*) => 0
-	SetTimer(() => ui := wantUi && CanShowUi() && (_ := MakeUi(KeyOfMap(inputHandlers), &currentInput), _(), _), -1)
+	SetTimer(() => ui := wantUi && CanShowUi() ? (_ := MakeUi(KeyOfMap(inputHandlers), &currentInput), _(), _) : (*) => 0, -1)
 
 	return SequenceClosure
 
