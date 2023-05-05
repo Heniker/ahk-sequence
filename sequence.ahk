@@ -53,6 +53,7 @@ SequenceRegister(wantUi := true) {
 				hasSuccess := false
 				hook.Stop()
 				ui("close")
+				SetTimer(() => ui("close")) ; Edge case when sequence fails very fast
 
 				return
 			}
@@ -72,6 +73,7 @@ SequenceRegister(wantUi := true) {
 	KeyDownHandler(hook, VK, SC) {
 		Critical("On") ; Ensures all operation are trully sync
 		if (!isActive) {
+			hook.Stop()
 			return
 		}
 
