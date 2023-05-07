@@ -7,7 +7,7 @@ Register a command for a sequence of keypresses
 
 SetCapsLockState("AlwaysOff")
 
-CapsLock & f::{
+CapsLock & s::{
 	MakeSequence := SequenceRegister()
 
 	MakeSequence("hello", (*) => MsgBox("hello"))
